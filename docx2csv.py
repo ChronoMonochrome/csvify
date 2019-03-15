@@ -20,6 +20,7 @@ def setup_env():
 	
 	this_path = _module_path()
 	SUBMODULES = [os.path.join(this_path, sub) for sub in SUBMODULES]
+	sys.path = SUBMODULES + sys.path
 
 setup_env()
 

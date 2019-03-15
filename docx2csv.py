@@ -6,6 +6,8 @@ import sys
 import errno
 import glob
 import csv
+	
+import argparse
 
 SUBMODULES = ["python-docx"]
 
@@ -59,7 +61,7 @@ def tbl2csv(tbl, output_file):
 	"""
 	write_csv(parse_tbl(tbl), output_file)
 
-def main(input_dir, output_dir = ""):
+def main(input_dir, output_dir = "", use_captions = True):
 	if not output_dir:
 		output_dir = os.path.join(input_dir, "out")
 
@@ -77,27 +79,32 @@ def main(input_dir, output_dir = ""):
 		print("processing {file}".format(file = docx_filename))
 		out_dir = os.path.join(output_dir, os.path.dirname(docx_filename))
 		tables = docx.Document(docx_filename).tables
-		for tbl in tables:
-			if hasattr(tbl, "caption") and tbl.caption:
+		for n, tbl in enumerate(tables):
+			if use_captions and hasattr(tbl, "caption") and tbl.caption:
 				out_file = os.path.join(out_dir, 
 					"{tbl_name}.csv".format(tbl_name = tbl.caption))
 				print("found table {tbl_name}, saving as {out_file}"
 					.format(tbl_name = tbl.caption, out_file = out_file))
-				tbl2csv(tbl, out_file)
+			else:
+				out_file = os.path.join(out_dir, 
+					"{tbl_num}.csv".format(tbl_num = n))
+				print("found table #{tbl_num}, saving as {out_file}"
+					.format(tbl_num = n, out_file = out_file))
+
+			tbl2csv(tbl, out_file)
 
 	os.chdir(old_pwd)
 	
-def usage():
-	print("Usage: python docx2csv.py input_dir [output_dir]")
-	sys.exit(0)
-	
 if __name__ == "__main__":
-	if len(sys.argv) < 2:
-		usage()
-		
-	input_dir = sys.argv[1]
-	output_dir = ""
-	if len(sys.argv) > 2:
-		output_dir = sys.argv[2]
+	parser = argparse.ArgumentParser(description = "Convert docx tables to CSV files.")
+	parser.add_argument("input_dir", metavar = "input_dir", type = str, 
+                    help = "an input directory to process docx files")
+	parser.add_argument("-o", metavar = "output_dir", type = str, 
+                    help = "an output directory to save CSV files")
+	parser.add_argument("-c", action = "store_false",
+                    help = "convert all tables (not only those containing a caption)")
 
-	main(input_dir, output_dir)
+	args = parser.parse_args()
+	main(input_dir = args.input_dir,
+		output_dir = args.o,
+		use_captions = args.c)

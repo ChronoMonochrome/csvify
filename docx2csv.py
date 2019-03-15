@@ -46,27 +46,32 @@ def parse_tbl(tbl):
 	return [[cell.text for cell in iter(row.cells)]
 	                   for row  in tbl.rows]
 					   
-def write_csv(lines, output_file):
+def write_csv(lines, output_file, keep_header, header_size):
 	"""
 	Write *lines* to *output_file*.
 	"""
 	with open(output_file, "w") as f:
 		writer = csv.writer(f)
-		writer.writerows(lines)
+		if keep_header:
+			writer.writerows(lines)
+		else:
+			writer.writerows(lines[header_size:])
 		
-def tbl2csv(tbl, output_file):
+def tbl2csv(tbl, output_file, keep_header = False, header_size = 1):
 	"""
 	Parse a python-docx table object *tbl* and write
 	the result as *output_file* in CSV format.
 	"""
-	write_csv(parse_tbl(tbl), output_file)
+	write_csv(parse_tbl(tbl), output_file, keep_header, header_size)
 
-def main(input_dir, output_dir = "", use_captions = True):
+def main(input_dir, output_dir = "", use_captions = True,
+			keep_header = False, header_size = 1):
 	if not output_dir:
 		output_dir = os.path.join(input_dir, "out")
 
 	old_pwd = os.getcwd()
 	os.chdir(input_dir)
+	print(keep_header, header_size)
 
 	found_docs = glob.glob("**/*.docx")
 
@@ -91,7 +96,7 @@ def main(input_dir, output_dir = "", use_captions = True):
 				print("found table #{tbl_num}, saving as {out_file}"
 					.format(tbl_num = n, out_file = out_file))
 
-			tbl2csv(tbl, out_file)
+			tbl2csv(tbl, out_file, keep_header, header_size)
 
 	os.chdir(old_pwd)
 	
@@ -103,8 +108,14 @@ if __name__ == "__main__":
                     help = "an output directory to save CSV files")
 	parser.add_argument("-c", action = "store_false",
                     help = "convert all tables (not only those containing a caption)")
+	parser.add_argument("-k", action = "store_true",
+                    help = "keep table header in output files (default is false)")
+	parser.add_argument("-s", metavar = "header_size", type = int, default = 1,
+                    help = "a size of the table header (default size of header is 1 row)")
 
 	args = parser.parse_args()
 	main(input_dir = args.input_dir,
 		output_dir = args.o,
-		use_captions = args.c)
+		use_captions = args.c,
+		keep_header = args.k,
+		header_size = args.s)

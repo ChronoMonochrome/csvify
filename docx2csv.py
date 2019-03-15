@@ -5,24 +5,26 @@ import os
 import sys
 import errno
 import glob
+import csv
 
-from docx import Document
+SUBMODULES = ["python-docx"]
 
 def _module_path():
-	if hasattr(sys, "frozen"):
-		return os.path.dirname(sys.executable)
-
 	if "__file__" in globals():
-		return os.path.dirname(__file__)
+		return os.path.dirname(os.path.realpath(__file__))
 	
-	return "."
+	return ""
+		
+def setup_env():
+	global SUBMODULES
 	
-def setup_env():	
 	this_path = _module_path()
+	SUBMODULES = [os.path.join(this_path, sub) for sub in SUBMODULES]
 
-	if not this_path in sys.path:
-		sys.path.append(this_path)
-	
+setup_env()
+
+import docx
+
 def mkdir_p(path):
 	try:
 		os.makedirs(path)
@@ -57,8 +59,6 @@ def tbl2csv(tbl, output_file):
 	write_csv(parse_tbl(tbl), output_file)
 
 def main(input_dir, output_dir = ""):
-	setup_env()
-
 	if not output_dir:
 		output_dir = os.path.join(input_dir, "out")
 
@@ -75,20 +75,19 @@ def main(input_dir, output_dir = ""):
 	for docx_filename in found_docs:
 		print("processing {file}".format(file = docx_filename))
 		out_dir = os.path.join(output_dir, os.path.dirname(docx_filename))
-		tables = Document(docx_filename).tables
+		tables = docx.Document(docx_filename).tables
 		for tbl in tables:
 			if hasattr(tbl, "caption") and tbl.caption:
 				out_file = os.path.join(out_dir, 
-								"{tbl_name}.csv".format(tbl_name = tbl.caption)
-						   )
+					"{tbl_name}.csv".format(tbl_name = tbl.caption))
 				print("found table {tbl_name}, saving as {out_file}"
-						.format(tbl_name = tbl.caption, out_file = out_file))
+					.format(tbl_name = tbl.caption, out_file = out_file))
 				tbl2csv(tbl, out_file)
 
 	os.chdir(old_pwd)
 	
 def usage():
-	print("Usage: python word2csv.py input_dir [output_dir]")
+	print("Usage: python docx2csv.py input_dir [output_dir]")
 	sys.exit(0)
 	
 if __name__ == "__main__":

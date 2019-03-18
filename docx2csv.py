@@ -42,10 +42,18 @@ def parse_tbl(tbl):
 	Parse a python-docx table object *tbl* and return
 	the data in csv-compatible format.
 	"""
-	
-	return [[cell.text for cell in iter(row.cells)]
-	                   for row  in tbl.rows]
-					   
+	res = []
+	for nrow, row in enumerate(tbl.rows):
+		last_tc = None
+		buf = []
+		for cell in row.cells:
+			# ignore merged and empty cells
+			if (cell._tc != last_tc):
+				buf.append(cell.text)
+			last_tc = cell._tc
+		res.append(buf)
+	return res
+
 def write_csv(lines, output_file, keep_header, header_size):
 	"""
 	Write *lines* to *output_file*.
@@ -99,7 +107,7 @@ def main(input_dir, output_dir = "", use_captions = True,
 			tbl2csv(tbl, out_file, keep_header, header_size)
 
 	os.chdir(old_pwd)
-	
+
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description = "Convert docx tables to CSV files.")
 	parser.add_argument("input_dir", metavar = "input_dir", type = str, 

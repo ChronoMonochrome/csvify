@@ -37,7 +37,7 @@ def mkdir_p(path):
 		else:
 			raise
 			
-def parse_tbl(tbl):
+def parse_tbl(tbl, keep_newlines = False):
 	"""
 	Parse a python-docx table object *tbl* and return
 	the data in csv-compatible format.
@@ -49,7 +49,11 @@ def parse_tbl(tbl):
 		for cell in row.cells:
 			# ignore merged and empty cells
 			if (cell._tc != last_tc):
-				buf.append(cell.text)
+				text = cell.text
+				if (not keep_newlines):
+					text = cell.text.replace("\r\n", " ") \
+							.replace("\n", " ")
+				buf.append(text)
 			last_tc = cell._tc
 		res.append(buf)
 	return res
@@ -65,15 +69,15 @@ def write_csv(lines, output_file, keep_header, header_size):
 		else:
 			writer.writerows(lines[header_size:])
 		
-def tbl2csv(tbl, output_file, keep_header = False, header_size = 1):
+def tbl2csv(tbl, output_file, keep_header = False, header_size = 1, keep_newlines = False):
 	"""
 	Parse a python-docx table object *tbl* and write
 	the result as *output_file* in CSV format.
 	"""
-	write_csv(parse_tbl(tbl), output_file, keep_header, header_size)
+	write_csv(parse_tbl(tbl, keep_newlines), output_file, keep_header, header_size)
 
 def main(input_dir, output_dir = "", use_captions = True,
-			keep_header = False, header_size = 1):
+			keep_header = False, header_size = 1, keep_newlines = False):
 	if not output_dir:
 		output_dir = os.path.join(input_dir, "out")
 
@@ -104,7 +108,7 @@ def main(input_dir, output_dir = "", use_captions = True,
 				print("found table #{tbl_num}, saving as {out_file}"
 					.format(tbl_num = n, out_file = out_file))
 
-			tbl2csv(tbl, out_file, keep_header, header_size)
+			tbl2csv(tbl, out_file, keep_header, header_size, keep_newlines)
 
 	os.chdir(old_pwd)
 
@@ -117,7 +121,9 @@ if __name__ == "__main__":
 	parser.add_argument("-c", action = "store_false",
                     help = "convert all tables (not only those containing a caption)")
 	parser.add_argument("-k", action = "store_true",
-                    help = "keep table header in output files (default is false)")
+                    help = "keep table header in output files (default: false)")
+	parser.add_argument("-n", action = "store_true",
+                    help = "keep newlines in the table cells (default: false)")
 	parser.add_argument("-s", metavar = "header_size", type = int, default = 1,
                     help = "a size of the table header (default size of header is 1 row)")
 
@@ -126,4 +132,5 @@ if __name__ == "__main__":
 		output_dir = args.o,
 		use_captions = args.c,
 		keep_header = args.k,
-		header_size = args.s)
+		header_size = args.s,
+		keep_newlines = args.n)

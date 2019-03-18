@@ -10,6 +10,7 @@ import csv
 import argparse
 
 SUBMODULES = ["python-docx"]
+TBL_HEADER_MAX_SIZE = 2
 
 def _module_path():
 	if "__file__" in globals():
@@ -37,13 +38,25 @@ def mkdir_p(path):
 		else:
 			raise
 			
-def parse_tbl(tbl, keep_newlines = False):
+def parse_tbl(tbl, keep_header = False, header_size = -1, keep_newlines = False):
 	"""
 	Parse a python-docx table object *tbl* and return
 	the data in csv-compatible format.
 	"""
 	res = []
-	for nrow, row in enumerate(tbl.rows):
+	detect_header_size = (header_size == -1)
+	header_size = 0
+
+	if detect_header_size and not keep_header:
+		header_size = 1
+
+		if len(tbl.rows) < 2:
+			return [[]]
+
+		if (tbl.rows[0].cells[0]._tc == tbl.rows[1].cells[0]._tc):
+			header_size = TBL_HEADER_MAX_SIZE
+
+	for nrow, row in enumerate(tbl.rows[header_size:]):
 		last_tc = None
 		buf = []
 		for cell in row.cells:
@@ -58,23 +71,20 @@ def parse_tbl(tbl, keep_newlines = False):
 		res.append(buf)
 	return res
 
-def write_csv(lines, output_file, keep_header, header_size):
+def write_csv(lines, output_file):
 	"""
 	Write *lines* to *output_file*.
 	"""
 	with open(output_file, "w") as f:
 		writer = csv.writer(f)
-		if keep_header:
-			writer.writerows(lines)
-		else:
-			writer.writerows(lines[header_size:])
+		writer.writerows(lines)
 		
 def tbl2csv(tbl, output_file, keep_header = False, header_size = 1, keep_newlines = False):
 	"""
 	Parse a python-docx table object *tbl* and write
 	the result as *output_file* in CSV format.
 	"""
-	write_csv(parse_tbl(tbl, keep_newlines), output_file, keep_header, header_size)
+	write_csv(parse_tbl(tbl, keep_header, header_size, keep_newlines), output_file)
 
 def main(input_dir, output_dir = "", use_captions = True,
 			keep_header = False, header_size = 1, keep_newlines = False):
@@ -124,8 +134,8 @@ if __name__ == "__main__":
                     help = "keep table header in output files (default: false)")
 	parser.add_argument("-n", action = "store_true",
                     help = "keep newlines in the table cells (default: false)")
-	parser.add_argument("-s", metavar = "header_size", type = int, default = 1,
-                    help = "a size of the table header (default size of header is 1 row)")
+	parser.add_argument("-s", metavar = "header_size", type = int, default = -1,
+                    help = "a size of the table header (default: -1 (try detecting header size))")
 
 	args = parser.parse_args()
 	main(input_dir = args.input_dir,

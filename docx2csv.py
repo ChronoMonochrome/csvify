@@ -97,14 +97,11 @@ def main(input_dir, output_dir = "", use_captions = True,
 
 	found_docs = glob.glob("**/*.docx")
 
-	dirs = set([os.path.dirname(doc) for doc in found_docs])
-	for d in iter(dirs):
-		mkdir_p(os.path.join(output_dir, d))
-
 	# main processing routine
 	for docx_filename in found_docs:
 		print("processing {file}".format(file = docx_filename))
-		out_dir = os.path.join(output_dir, os.path.dirname(docx_filename))
+		out_dir = os.path.join(output_dir, docx_filename)
+		mkdir_p(out_dir)
 		tables = docx.Document(docx_filename).tables
 		for n, tbl in enumerate(tables):
 			if use_captions and hasattr(tbl, "caption") and tbl.caption:

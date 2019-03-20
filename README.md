@@ -1,13 +1,13 @@
 # Python Office Utils
 Python utils to work with Office documents
 
-# docx2csv.py
+# csvify.py
 ```
-Convert docx tables to CSV files.
+Convert docx / xlsx tables to CSV files.
 
 Usage:
 
-docx2csv.py [-h] [-o output_dir] [-c] [-k] [-s header_size] input_dir
+csvify.py [-h] [-o output_dir] [-c] [-k] [-s header_size] input_dir
 ```
 
 For each found docx file in input_dir directory,

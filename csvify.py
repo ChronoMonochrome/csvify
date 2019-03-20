@@ -6,6 +6,7 @@ import sys
 import errno
 import glob
 import csv
+import openpyxl
 	
 import argparse
 
@@ -38,7 +39,7 @@ def mkdir_p(path):
 		else:
 			raise
 			
-def parse_tbl(tbl, keep_header = False, header_size = -1, keep_newlines = False):
+def parse_docx_tbl(tbl, keep_header = False, header_size = -1, keep_newlines = False):
 	"""
 	Parse a python-docx table object *tbl* and return
 	the data in csv-compatible format.
@@ -79,12 +80,63 @@ def write_csv(lines, output_file):
 		writer = csv.writer(f)
 		writer.writerows(lines)
 		
-def tbl2csv(tbl, output_file, keep_header = False, header_size = 1, keep_newlines = False):
+def docx_tbl2csv(tbl, output_file, keep_header = False, header_size = 1, keep_newlines = False):
 	"""
 	Parse a python-docx table object *tbl* and write
 	the result as *output_file* in CSV format.
 	"""
-	write_csv(parse_tbl(tbl, keep_header, header_size, keep_newlines), output_file)
+	write_csv(parse_docx_tbl(tbl, keep_header, header_size, keep_newlines), output_file)
+	
+def parse_named_range(wb, named_range):
+	"""
+	Get a single rectangular region from
+	the specified openpyxl workbook object *wb*.
+	"""
+	
+	range_name = named_range.name
+	
+	# skip cell references
+	if '!' in range_name:
+		return [[]]
+
+	destinations = list(named_range.destinations) 
+	ws, reg = destinations[0]
+	ws = wb[ws]
+	region = ws[reg]
+
+	for row in region:
+		yield row
+
+def xlsx_named_range2csv(wb, named_range, output_file, keep_header = False, header_size = 1, keep_newlines = False):
+	"""
+	Parse an openpyxl workbook object *wb* and write
+	the result as *output_file* in CSV format.
+	*named_range* is openpyxl.workbook.defined_name.DefinedName object.
+	"""
+	reg = []
+
+	region_iter = parse_named_range(wb, named_range)
+
+	if header_size == -1:
+		header_size = 1
+
+	if not keep_header:
+		for _ in range(header_size):
+			next(region_iter)
+
+	for row in region_iter:
+		if (keep_newlines):
+			row_ = [cell.value for cell in row]
+		else:
+			row_ = [cell.value.replace("\r\n", " ").replace("\n", " ") \
+					if isinstance(cell.value, str) else cell.value for cell in row]
+
+		# return early if encountered an empty row
+		if not any(row_):
+			break
+		reg.append(row_)
+
+	write_csv(reg, output_file)
 
 def main(input_dir, output_dir = "", use_captions = True,
 			keep_header = False, header_size = 1, keep_newlines = False):
@@ -95,10 +147,8 @@ def main(input_dir, output_dir = "", use_captions = True,
 	os.chdir(input_dir)
 	print(keep_header, header_size)
 
-	found_docs = glob.glob("**/*.docx")
-
 	# main processing routine
-	for docx_filename in found_docs:
+	for docx_filename in glob.glob("**/*.docx"):
 		print("processing {file}".format(file = docx_filename))
 		out_dir = os.path.join(output_dir, docx_filename)
 		mkdir_p(out_dir)
@@ -115,7 +165,17 @@ def main(input_dir, output_dir = "", use_captions = True,
 				print("found table #{tbl_num}, saving as {out_file}"
 					.format(tbl_num = n, out_file = out_file))
 
-			tbl2csv(tbl, out_file, keep_header, header_size, keep_newlines)
+			docx_tbl2csv(tbl, out_file, keep_header, header_size, keep_newlines)
+
+	for xlsx_filename in glob.glob("**/*.xlsx"):
+		print("processing {file}".format(file = xlsx_filename))
+		out_dir = os.path.join(output_dir, xlsx_filename)
+		mkdir_p(out_dir)
+		wb = openpyxl.load_workbook(xlsx_filename, data_only = True, read_only = True)
+		for named_range in wb.defined_names.definedName:
+			out_file = os.path.join(out_dir, 
+					"{reg_name}.csv".format(reg_name = named_range.name))
+			xlsx_named_range2csv(wb, named_range, out_file, keep_header, header_size, keep_newlines)
 
 	os.chdir(old_pwd)
 

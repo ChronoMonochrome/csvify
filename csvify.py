@@ -13,6 +13,8 @@ import argparse
 SUBMODULES = ["python-docx"]
 TBL_HEADER_MAX_SIZE = 2
 
+XLSX_MAX_COLUMNS = 200
+
 def _module_path():
 	if "__file__" in globals():
 		return os.path.dirname(os.path.realpath(__file__))
@@ -91,6 +93,7 @@ def parse_named_range(wb, named_range):
 	"""
 	Get a single rectangular region from
 	the specified openpyxl workbook object *wb*.
+	*named_range* is openpyxl.workbook.defined_name.DefinedName object.
 	"""
 	
 	range_name = named_range.name
@@ -106,23 +109,28 @@ def parse_named_range(wb, named_range):
 
 	for row in region:
 		yield row
+		
+def worksheet2iter(ws):
+	for row in ws:
+		yield row
 
-def xlsx_named_range2csv(wb, named_range, output_file, keep_header = False, header_size = 1, keep_newlines = False):
+def xlsx_region2csv(wb, region_iter, output_file, keep_header = False, header_size = 1, keep_newlines = False):
 	"""
-	Parse an openpyxl workbook object *wb* and write
+	Iterate through *region_iter* and write
 	the result as *output_file* in CSV format.
-	*named_range* is openpyxl.workbook.defined_name.DefinedName object.
 	"""
-	reg = []
-
-	region_iter = parse_named_range(wb, named_range)
 
 	if header_size == -1:
 		header_size = 1
 
 	if not keep_header:
 		for _ in range(header_size):
-			next(region_iter)
+			try:
+				next(region_iter)
+			except StopIteration:
+				break
+	
+	reg = []
 
 	for row in region_iter:
 		if (keep_newlines):
@@ -138,17 +146,29 @@ def xlsx_named_range2csv(wb, named_range, output_file, keep_header = False, head
 
 	write_csv(reg, output_file)
 
-def main(input_dir, output_dir = "", use_captions = True,
-			keep_header = False, header_size = 1, keep_newlines = False):
-	if not output_dir:
-		output_dir = os.path.join(input_dir, "out")
+def main(input_dir = "", input_file = "", output_dir = "", use_captions = True,
+			use_named_ranges = False, keep_header = False, header_size = 1, keep_newlines = False):
+	if (not output_dir) and (input_dir or input_file):
+		if input_dir:
+			output_dir = os.path.join(input_dir, "out")
+		elif input_file:
+			output_dir = os.path.join(os.path.dirname(input_file), "out")
 
-	old_pwd = os.getcwd()
-	os.chdir(input_dir)
-	print(keep_header, header_size)
+	if input_dir:
+		old_pwd = os.getcwd()
+		os.chdir(input_dir)	
+		in_docx_files = glob.glob("**/*.docx")
+		in_xlsx_files = glob.glob("**/*.xlsx")
+	elif input_file:
+		in_docx_files = []
+		in_xlsx_files = []
+		if input_file.endswith(".docx"):
+			in_docx_files = [input_file]
+		elif input_file.endswith(".xlsx"):
+			in_xlsx_files = [input_file]
 
 	# main processing routine
-	for docx_filename in glob.glob("**/*.docx"):
+	for docx_filename in in_docx_files:
 		print("processing {file}".format(file = docx_filename))
 		out_dir = os.path.join(output_dir, docx_filename)
 		mkdir_p(out_dir)
@@ -167,26 +187,37 @@ def main(input_dir, output_dir = "", use_captions = True,
 
 			docx_tbl2csv(tbl, out_file, keep_header, header_size, keep_newlines)
 
-	for xlsx_filename in glob.glob("**/*.xlsx"):
+	for xlsx_filename in in_xlsx_files:
 		print("processing {file}".format(file = xlsx_filename))
 		out_dir = os.path.join(output_dir, xlsx_filename)
 		mkdir_p(out_dir)
 		wb = openpyxl.load_workbook(xlsx_filename, data_only = True, read_only = True)
-		for named_range in wb.defined_names.definedName:
+		if use_named_ranges:
+			for named_range in wb.defined_names.definedName:
+				out_file = os.path.join(out_dir, 
+						"{reg_name}.csv".format(reg_name = named_range.name))
+				xlsx_region2csv(wb, parse_named_range(wb, named_range), out_file, keep_header, header_size, keep_newlines)
+			
+		for ws in wb.worksheets:
 			out_file = os.path.join(out_dir, 
-					"{reg_name}.csv".format(reg_name = named_range.name))
-			xlsx_named_range2csv(wb, named_range, out_file, keep_header, header_size, keep_newlines)
+					"{ws_name}.csv".format(ws_name = ws.title))
+			xlsx_region2csv(wb, worksheet2iter(ws), out_file, keep_header, header_size, keep_newlines)
 
-	os.chdir(old_pwd)
+	if input_dir:
+		os.chdir(old_pwd)
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description = "Convert docx tables to CSV files.")
-	parser.add_argument("input_dir", metavar = "input_dir", type = str, 
+	parser.add_argument("-i", metavar = "input_dir", type = str,
                     help = "an input directory to process docx files")
+	parser.add_argument("-f", metavar = "input_file", type = str,
+                    help = "an input file")
 	parser.add_argument("-o", metavar = "output_dir", type = str, 
                     help = "an output directory to save CSV files")
 	parser.add_argument("-c", action = "store_false",
-                    help = "convert all tables (not only those containing a caption)")
+                    help = "convert all DOCX tables (not only those containing a caption)")
+	parser.add_argument("--named_ranges", action = "store_true",
+                    help = "produce CSV files for named ranges (XLSX)")
 	parser.add_argument("-k", action = "store_true",
                     help = "keep table header in output files (default: false)")
 	parser.add_argument("-n", action = "store_true",
@@ -195,9 +226,11 @@ if __name__ == "__main__":
                     help = "a size of the table header (default: -1 (try detecting header size))")
 
 	args = parser.parse_args()
-	main(input_dir = args.input_dir,
+	main(input_dir = args.i,
+		input_file = args.f,
 		output_dir = args.o,
 		use_captions = args.c,
+		use_named_ranges = args.named_ranges,
 		keep_header = args.k,
 		header_size = args.s,
 		keep_newlines = args.n)

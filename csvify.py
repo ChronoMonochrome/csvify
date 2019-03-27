@@ -146,20 +146,28 @@ def xlsx_region2csv(wb, region_iter, output_file, keep_header = False, header_si
 
 	write_csv(reg, output_file)
 
-def main(input_dir = "", input_file = "", output_dir = "", use_captions = True,
+def main(input_file, output_dir = "", use_captions = True,
 			use_named_ranges = False, keep_header = False, header_size = 1, keep_newlines = False):
-	if (not output_dir) and (input_dir or input_file):
-		if input_dir:
-			output_dir = os.path.join(input_dir, "out")
-		elif input_file:
+	if not os.path.exists(input_file):
+		parser.error("Specified input file(folder) %s was not found" % input_file)
+		return
+
+	input_is_dir = os.path.isdir(input_file)
+
+	if not output_dir:
+		if input_is_dir:
+			output_dir = os.path.join(input_file, "out")
+		else:
 			output_dir = os.path.join(os.path.dirname(input_file), "out")
 
-	if input_dir:
+		print(output_dir)
+
+	if input_is_dir:
 		old_pwd = os.getcwd()
-		os.chdir(input_dir)	
-		in_docx_files = glob.glob("**/*.docx")
-		in_xlsx_files = glob.glob("**/*.xlsx")
-	elif input_file:
+		os.chdir(input_file)	
+		in_docx_files = [i for i in glob.iglob("**/*.docx", recursive=True) if os.path.isfile(i)]
+		in_xlsx_files = [i for i in glob.iglob("**/*.xlsx", recursive=True) if os.path.isfile(i)]
+	else:
 		in_docx_files = []
 		in_xlsx_files = []
 		if input_file.endswith(".docx"):
@@ -170,7 +178,7 @@ def main(input_dir = "", input_file = "", output_dir = "", use_captions = True,
 	# main processing routine
 	for docx_filename in in_docx_files:
 		print("processing {file}".format(file = docx_filename))
-		out_dir = os.path.join(output_dir, docx_filename)
+		out_dir = os.path.join(output_dir, os.path.basename(docx_filename))
 		mkdir_p(out_dir)
 		tables = docx.Document(docx_filename).tables
 		for n, tbl in enumerate(tables):
@@ -189,7 +197,7 @@ def main(input_dir = "", input_file = "", output_dir = "", use_captions = True,
 
 	for xlsx_filename in in_xlsx_files:
 		print("processing {file}".format(file = xlsx_filename))
-		out_dir = os.path.join(output_dir, xlsx_filename)
+		out_dir = os.path.join(output_dir, os.path.basename(xlsx_filename))
 		mkdir_p(out_dir)
 		wb = openpyxl.load_workbook(xlsx_filename, data_only = True, read_only = True)
 		if use_named_ranges:
@@ -203,15 +211,13 @@ def main(input_dir = "", input_file = "", output_dir = "", use_captions = True,
 					"{ws_name}.csv".format(ws_name = ws.title))
 			xlsx_region2csv(wb, worksheet2iter(ws), out_file, keep_header, header_size, keep_newlines)
 
-	if input_dir:
+	if input_is_dir:
 		os.chdir(old_pwd)
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description = "Convert docx tables to CSV files.")
-	parser.add_argument("-i", metavar = "input_dir", type = str,
-                    help = "an input directory to process docx files")
-	parser.add_argument("-f", metavar = "input_file", type = str,
-                    help = "an input file")
+	parser.add_argument("-i", metavar = "input_file", type = str,
+                    help = "an input directory or file")
 	parser.add_argument("-o", metavar = "output_dir", type = str, 
                     help = "an output directory to save CSV files")
 	parser.add_argument("-c", action = "store_false",
@@ -226,8 +232,7 @@ if __name__ == "__main__":
                     help = "a size of the table header (default: -1 (try detecting header size))")
 
 	args = parser.parse_args()
-	main(input_dir = args.i,
-		input_file = args.f,
+	main(input_file = args.i,
 		output_dir = args.o,
 		use_captions = args.c,
 		use_named_ranges = args.named_ranges,

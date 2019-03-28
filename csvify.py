@@ -9,11 +9,13 @@ import csv
 import openpyxl
 	
 import argparse
+from itertools import tee
 
 SUBMODULES = ["python-docx"]
 TBL_HEADER_MAX_SIZE = 2
 
 XLSX_MAX_COLUMNS = 200
+XLSX_HEADER_MAX_SIZE = 200
 
 def _module_path():
 	if "__file__" in globals():
@@ -109,30 +111,27 @@ def parse_named_range(wb, named_range):
 
 	for row in region:
 		yield row
-		
+
 def worksheet2iter(ws):
 	for row in ws:
 		yield row
 
-def xlsx_region2csv(wb, region_iter, output_file, keep_header = False, header_size = 1, keep_newlines = False):
+def read_row(ws, row_num):
+	for i in range(1, XLSX_MAX_COLUMNS + 1):
+		yield ws.cell(row = row_num, column = i).value
+
+def xlsx_region2csv(ws, region_iter, output_file, keep_header = False, header_size = 0, keep_newlines = False):
 	"""
 	Iterate through *region_iter* and write
 	the result as *output_file* in CSV format.
 	"""
-
-	if header_size == -1:
-		header_size = 1
-
-	if not keep_header:
-		for _ in range(header_size):
-			try:
-				next(region_iter)
-			except StopIteration:
-				break
 	
 	reg = []
+	
+	def __process_row(row):
+		if not row:
+			return
 
-	for row in region_iter:
 		if (keep_newlines):
 			row_ = [cell.value for cell in row]
 		else:
@@ -141,13 +140,42 @@ def xlsx_region2csv(wb, region_iter, output_file, keep_header = False, header_si
 
 		# return early if encountered an empty row
 		if not any(row_):
-			break
+			return
 		reg.append(row_)
+
+	first_row = []
+
+	# skip empty rows at the beginning of the sheet
+	for _ in range(XLSX_HEADER_MAX_SIZE):
+		try:
+			first_row = next(region_iter)
+			if any(cell.value for cell in first_row):
+				#print("detected header size of %d rows" %i)
+				break
+		except StopIteration:
+			break
+
+	__process_row(first_row)
+
+	first_row = []
+
+	# optionally skip the header
+	if not keep_header:
+		for _ in range(header_size):
+			try:
+				first_row = next(region_iter)
+			except StopIteration:
+				break
+
+		__process_row(first_row)
+
+	for row in region_iter:
+		__process_row(row)
 
 	write_csv(reg, output_file)
 
 def main(input_file, output_dir = "", use_captions = True,
-			use_named_ranges = False, keep_header = False, header_size = 1, keep_newlines = False):
+			use_named_ranges = False, keep_header = False, header_size = 0, keep_newlines = False):
 	if not os.path.exists(input_file):
 		parser.error("Specified input file(folder) %s was not found" % input_file)
 		return
@@ -204,12 +232,12 @@ def main(input_file, output_dir = "", use_captions = True,
 			for named_range in wb.defined_names.definedName:
 				out_file = os.path.join(out_dir, 
 						"{reg_name}.csv".format(reg_name = named_range.name))
-				xlsx_region2csv(wb, parse_named_range(wb, named_range), out_file, keep_header, header_size, keep_newlines)
-			
+				xlsx_region2csv(named_range, parse_named_range(wb, named_range), out_file, keep_header, header_size, keep_newlines)
+
 		for ws in wb.worksheets:
 			out_file = os.path.join(out_dir, 
 					"{ws_name}.csv".format(ws_name = ws.title))
-			xlsx_region2csv(wb, worksheet2iter(ws), out_file, keep_header, header_size, keep_newlines)
+			xlsx_region2csv(ws, worksheet2iter(ws), out_file, keep_header, header_size, keep_newlines)
 
 	if input_is_dir:
 		os.chdir(old_pwd)
@@ -228,8 +256,8 @@ if __name__ == "__main__":
                     help = "keep table header in output files (default: false)")
 	parser.add_argument("-n", action = "store_true",
                     help = "keep newlines in the table cells (default: false)")
-	parser.add_argument("-s", metavar = "header_size", type = int, default = -1,
-                    help = "a size of the table header (default: -1 (try detecting header size))")
+	parser.add_argument("-s", metavar = "header_size", type = int, default = 0,
+                    help = "a size of the table header (default: 0)")
 
 	args = parser.parse_args()
 	main(input_file = args.i,
